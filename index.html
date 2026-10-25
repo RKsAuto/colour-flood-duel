@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Colour Flood Duel</title>
+    <meta name="description" content="A two-player colour flood strategy game. Play a friend on one screen or take on the computer at three difficulty levels.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="top">
+            <h1>Colour Flood Duel<span class="drip" aria-hidden="true"><i></i><i></i><i></i><i></i></span></h1>
+            <p class="sub">Pick a colour, swallow your neighbours, own more than half the board.</p>
+        </header>
+
+        <nav class="toolbar" aria-label="Game settings">
+            <div class="seg" role="group" aria-label="Game mode">
+                <button type="button" id="modeCpu" aria-pressed="true">vs Computer</button>
+                <button type="button" id="modePvp" aria-pressed="false">2 Players</button>
+            </div>
+            <label class="field" id="levelField">
+                <span>Difficulty</span>
+                <select id="level">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>Board</span>
+                <select id="size">
+                    <option value="10">10 × 10</option>
+                    <option value="12" selected>12 × 12</option>
+                    <option value="14">14 × 14</option>
+                </select>
+            </label>
+            <button type="button" class="btn" id="newBtn">New game</button>
+        </nav>
+
+        <main class="stage">
+            <div class="board-wrap">
+                <canvas id="board" aria-label="Game board"></canvas>
+                <div class="overlay" id="overlay" hidden>
+                    <div class="card">
+                        <p class="eyebrow">Game over</p>
+                        <h2 id="resTitle">You win</h2>
+                        <p class="res-sub" id="resSub"></p>
+                        <button type="button" class="btn" id="againBtn">Next round</button>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="side">
+                <section class="panel" aria-label="Score">
+                    <div class="player" id="pc1">
+                        <span class="chip p1">1</span>
+                        <div class="pinfo">
+                            <div class="pname" id="n1">You</div>
+                            <div class="pmeta">Top-left · <span id="w1">0</span> wins</div>
+                        </div>
+                        <div class="pscore" id="s1">1</div>
+                    </div>
+                    <div class="player" id="pc2">
+                        <span class="chip p2">2</span>
+                        <div class="pinfo">
+                            <div class="pname" id="n2">Computer</div>
+                            <div class="pmeta">Bottom-right · <span id="w2">0</span> wins</div>
+                        </div>
+                        <div class="pscore" id="s2">1</div>
+                    </div>
+                    <div class="tug" aria-hidden="true"><span id="t1"></span><span id="t0"></span><span id="t2"></span></div>
+                    <div class="tugmeta"><span id="pct1">0%</span><span id="movesTxt">Move 1</span><span id="pct2">0%</span></div>
+                </section>
+
+                <section class="panel pick" aria-label="Choose a colour">
+                    <p class="status" id="status" aria-live="polite"></p>
+                    <p class="note" id="note" hidden></p>
+                    <div class="palette" id="palette"></div>
+                    <p class="hint">Tap a colour, press 1–6, or tap any tile on the board. The number under each colour is how many cells it grabs right now.</p>
+                </section>
+
+                <section class="panel rules">
+                    <h3>How to play</h3>
+                    <ul>
+                        <li>Each player owns the patch connected to their corner.</li>
+                        <li>On your turn, pick a new colour. Your whole patch turns that colour and absorbs every touching cell of the same colour.</li>
+                        <li>You can't pick your own colour or your rival's. Your pick also locks that colour away from them next turn.</li>
+                        <li>Own more than half the board to win. If nobody captures a cell for 3 turns each, the bigger territory wins.</li>
+                        <li>The first move alternates every round.</li>
+                    </ul>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
