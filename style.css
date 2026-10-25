@@ -311,6 +311,11 @@ canvas {
 .sw:disabled .gain { color: var(--muted); font-weight: 500; }
 .hint { margin: 0; font-size: 12.5px; color: var(--muted); }
 
+.legend { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.lg { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lg b { color: var(--fg); font-weight: 700; }
+.ico { width: 22px; height: 22px; flex: none; display: block; }
+
 .rules h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
 .rules ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
 
@@ -361,7 +366,7 @@ html.embed .toolbar { gap: clamp(6px, 1.2vh, 10px) 8px; font-size: clamp(12px, 2
 html.embed .seg button { padding: clamp(3px, 0.8vh, 6px) 10px; }
 html.embed select { padding: clamp(3px, 0.8vh, 7px) 8px; }
 html.embed .btn { padding: clamp(4px, 1vh, 8px) 12px; }
-html.embed .field span { font-size: 11px; }
+html.embed .field span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 html.embed .actions { margin-left: 0; }
 
 html.embed .side { gap: clamp(6px, 1.5vh, 14px); align-self: stretch; align-content: start; overflow: auto; min-height: 0; }
@@ -377,6 +382,9 @@ html.embed .tugmeta { font-size: 12px; line-height: 1.3; }
 html.embed .palette { gap: clamp(5px, 1.2vh, 8px); }
 html.embed .sw .gain { font-size: 12px; line-height: 1.2; }
 html.embed .pick { order: 0; }
+html.embed .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; }
+html.embed .lg-d { display: none; }
+html.embed .ico { width: clamp(14px, 3vh, 20px); height: clamp(14px, 3vh, 20px); }
 
 /* Portrait frames: board on top, rail below, scrolling allowed */
 @media (max-aspect-ratio: 1/1) {

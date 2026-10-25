@@ -1,18 +1,38 @@
 # Colour Flood Duel
 
-A two-player colour flood strategy game that runs in the browser. Play a friend on one screen, or take on the computer at three difficulty levels.
+A two-player territory battle that runs in the browser. Flood your colour across walled arenas, set off Bursts, bridge with Prisms and Raid your rival's border. Play a friend on one screen, or take on the computer at three difficulty levels.
 
 ## How to play
 
 - Player 1 starts in the top-left corner, Player 2 in the bottom-right.
-- On your turn, pick a colour. Your whole territory turns that colour and absorbs every touching cell of the same colour.
+- On your turn, pick a colour. Your whole territory turns that colour and absorbs every touching tile of the same colour.
 - You can't pick your own current colour or your rival's. Your pick also locks that colour away from them on their next turn.
-- Own more than half the board to win.
-- If nobody captures a cell for 3 turns each, the game ends and the bigger territory wins.
+- Own more than half the playable tiles to win.
+- If nobody captures a tile for 3 turns each, the game ends and the bigger territory wins.
 - If a player is sealed in with no open border, the other player keeps moving.
 - The first move alternates every round.
 
-**Controls:** click a colour button, press keys `1`–`6`, or click any tile on the board to pick its colour.
+**Power tiles**
+
+| Tile | Effect |
+|---|---|
+| **Burst** (starburst) | Capturing it blasts open the 8 tiles around it, whatever their colour. Bursts can chain. |
+| **Prism** (four-colour tile) | Matches every colour, so any flood that touches it takes it. Useful as a bridge. |
+| **Raid** (lightning bolt) | Capturing it steals every rival tile touching your border. Home corners can't be stolen. |
+
+**Arenas**
+
+| Arena | Size | Layout |
+|---|---|---|
+| Islands | 12 × 12 | Wall blocks that split the board into lanes |
+| Canyon | 13 × 13 | A diagonal wall with three narrow gaps |
+| Fortress | 14 × 14 | A walled keep in the middle with four gates and treasure inside |
+| Open 12×12 | 12 × 12 | No walls |
+| Quick 10×10 | 10 × 10 | No walls, short games |
+
+Walls and power tiles are always placed point-symmetrically, so both corners face the same board.
+
+**Controls:** click a colour button, press keys `1`–`6`, or click any tile on the board to pick its colour. A ★ next to a colour's count means that move sets off a power tile.
 
 ## Modes
 
@@ -24,10 +44,10 @@ A two-player colour flood strategy game that runs in the browser. Play a friend 
 **Computer difficulty:**
 
 - **Easy** picks a random colour that captures something.
-- **Medium** is greedy and always takes the biggest grab available.
-- **Hard** looks four moves ahead with minimax and alpha-beta pruning. It scores positions by cell lead plus how much open border each side has.
+- **Medium** is greedy and takes the biggest grab, counting power tile effects.
+- **Hard** looks five moves ahead with minimax and alpha-beta pruning. It scores positions by tile lead, open border, and power tiles within reach.
 
-In bot-vs-bot simulations on a 12 × 12 board, Medium beat Easy about 93% of the time and Hard beat Medium about 77% of the time.
+In bot-vs-bot simulations across all arenas, Medium beats Easy about 90% of the time, and Hard beats Medium 63–88% of the time depending on the arena. Equal bots win about 50/50 on every arena.
 
 ## Run locally
 
@@ -51,7 +71,8 @@ python3 -m http.server 8000
 |---|---|
 | `index.html` | Page structure |
 | `style.css` | Layout and theme: light and dark mode, plus a fit-to-frame layout for game portals |
-| `game.js` | Game rules and the computer opponent (pure functions, no DOM) |
+| `game.js` | Game rules, arenas, power tiles and the computer opponent (pure functions, no DOM) |
+| `art.js` | Tile artwork shared by the board, legend and covers |
 | `main.js` | Canvas drawing, input and UI |
 | `platform.js` | Portal hooks (CrazyGames SDK). Every call is a no-op on your own site. |
 | `fonts/` | Self-hosted Dela Gothic One and DM Sans (SIL Open Font License) |

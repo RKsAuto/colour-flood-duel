@@ -10,7 +10,7 @@ import pathlib, shutil, zipfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "dist" / "crazygames"
 ZIP = ROOT / "dist" / "colour-flood-duel-crazygames.zip"
-FILES = ["index.html", "style.css", "game.js", "platform.js", "main.js"]
+FILES = ["index.html", "style.css", "game.js", "art.js", "platform.js", "main.js"]
 SDK_TAG = '<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>'
 
 shutil.rmtree(OUT, ignore_errors=True)

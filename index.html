@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Colour Flood Duel</title>
-    <meta name="description" content="A two-player colour flood strategy game. Play a friend on one screen or take on the computer at three difficulty levels.">
+    <meta name="description" content="A two-player territory battle. Flood your colour across walled arenas, set off Bursts, bridge with Prisms and Raid your rival's border. Play a friend or the computer.">
     <script>
         // Compact, no-scroll layout when the game runs inside another site's frame (game portals) or with ?embed=1
         (function () {
@@ -22,7 +22,7 @@
     <div class="app">
         <header class="top">
             <h1>Colour Flood Duel<span class="drip" aria-hidden="true"><i></i><i></i><i></i><i></i></span></h1>
-            <p class="sub">Pick a colour, swallow your neighbours, own more than half the board.</p>
+            <p class="sub">Flood your colour across the arena, set off Bursts, steal with Raids. Own more than half to win.</p>
         </header>
 
         <nav class="toolbar" aria-label="Game settings">
@@ -39,11 +39,13 @@
                 </select>
             </label>
             <label class="field">
-                <span>Board</span>
-                <select id="size">
-                    <option value="10">10 × 10</option>
-                    <option value="12" selected>12 × 12</option>
-                    <option value="14">14 × 14</option>
+                <span>Arena</span>
+                <select id="arena">
+                    <option value="islands" selected>Islands</option>
+                    <option value="canyon">Canyon</option>
+                    <option value="fortress">Fortress</option>
+                    <option value="open12">Open 12×12</option>
+                    <option value="open10">Quick 10×10</option>
                 </select>
             </label>
             <div class="actions">
@@ -90,16 +92,24 @@
                 <p class="status" id="status" aria-live="polite"></p>
                 <p class="note" id="note" hidden></p>
                 <div class="palette" id="palette"></div>
-                <p class="hint">Tap a colour, press 1–6, or tap any tile on the board. The number under each colour is how many cells it grabs right now.</p>
+                <div class="legend" aria-label="Power tiles">
+                    <span class="lg"><canvas class="ico" data-kind="burst" aria-hidden="true"></canvas><b>Burst</b><span class="lg-d">blasts open the 8 tiles around it</span></span>
+                    <span class="lg"><canvas class="ico" data-kind="prism" aria-hidden="true"></canvas><b>Prism</b><span class="lg-d">matches every colour</span></span>
+                    <span class="lg"><canvas class="ico" data-kind="raid" aria-hidden="true"></canvas><b>Raid</b><span class="lg-d">steals your rival's border</span></span>
+                </div>
+                <p class="hint">Tap a colour, press 1–6, or tap any tile on the board. The number under each colour is how many tiles it grabs right now, and ★ means it sets off a power tile.</p>
             </section>
 
             <section class="panel rules" id="rulesPanel">
                 <h3>How to play</h3>
                 <ul id="rulesList">
-                    <li>Each player owns the patch connected to their corner.</li>
-                    <li>On your turn, pick a new colour. Your whole patch turns that colour and absorbs every touching cell of the same colour.</li>
+                    <li>Each player owns the patch connected to their corner. Dark gaps are walls and aren't part of the board.</li>
+                    <li>On your turn, pick a new colour. Your whole patch turns that colour and absorbs every touching tile of the same colour.</li>
                     <li>You can't pick your own colour or your rival's. Your pick also locks that colour away from them next turn.</li>
-                    <li>Own more than half the board to win. If nobody captures a cell for 3 turns each, the bigger territory wins.</li>
+                    <li><b>Burst</b> tiles blast open the 8 tiles around them, whatever their colour.</li>
+                    <li><b>Prism</b> tiles match every colour, so any flood that touches one takes it.</li>
+                    <li><b>Raid</b> tiles steal every rival tile touching your border. Home corners can't be stolen.</li>
+                    <li>Own more than half the playable tiles to win. If nobody captures a tile for 3 turns each, the bigger territory wins.</li>
                     <li>The first move alternates every round.</li>
                 </ul>
             </section>
@@ -116,6 +126,7 @@
     </div>
 
     <script src="game.js"></script>
+    <script src="art.js"></script>
     <script src="platform.js"></script>
     <script src="main.js"></script>
 </body>

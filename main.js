@@ -2,8 +2,9 @@
 
 /* =========================================================
    Colour Flood Duel: drawing and UI
-   Uses the rules in game.js and the portal hooks in platform.js.
-   ?demo=1 makes the computer play both sides (for trailers).
+   Uses the rules in game.js, tile art in art.js and the portal
+   hooks in platform.js. ?demo=1 makes the computer play both
+   sides (for trailers).
    ========================================================= */
 
 (function () {
@@ -13,17 +14,19 @@
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const params = new URLSearchParams(location.search);
     const DEMO = params.get("demo") === "1";
-    const CPU_DELAY = DEMO ? 380 : 650;
+    const CPU_DELAY = DEMO ? 420 : 650;
+    const DEMO_ARENAS = ["islands", "fortress", "canyon"];
 
-    const ui = { mode: "cpu", level: "medium", N: 12 };
+    const ui = { mode: "cpu", level: "medium", arena: "islands" };
     let S = null;              // current game
     let series = { 1: 0, 2: 0, draws: 0 };
     let nextStarter = 1;
     let gameId = 0;            // invalidates pending computer moves when a new game starts
+    let demoRound = 0;
     let thinking = false;
     let recorded = false;
     let modalOpen = false;
-    let anim = null, preview = null, hoverColor = null;
+    let anim = null, preview = null, hoverColor = null, previews = null;
 
     /* ----- helpers ----- */
     const names = () => ui.mode === "cpu" ? { 1: "You", 2: "Computer" } : { 1: "Player 1", 2: "Player 2" };
@@ -36,20 +39,29 @@
             const p = JSON.parse(Platform.load("cfd-prefs") || "{}");
             if (p.mode === "cpu" || p.mode === "pvp") ui.mode = p.mode;
             if (["easy", "medium", "hard"].includes(p.level)) ui.level = p.level;
-            if ([10, 12, 14].includes(p.N)) ui.N = p.N;
+            if (ARENAS[p.arena]) ui.arena = p.arena;
         } catch (e) { /* ignore bad data */ }
         if (DEMO) { ui.mode = "cpu"; ui.level = "hard"; }
     }
     const savePrefs = () => Platform.save("cfd-prefs", JSON.stringify(ui));
+
+    // What every legal colour would do right now, worked out once per turn
+    function getPreviews() {
+        if (previews && previews.moves === S.moves && previews.turn === S.turn) return previews;
+        previews = { moves: S.moves, turn: S.turn, by: {} };
+        for (const c of legalMoves(S, S.turn)) previews.by[c] = previewMove(S, c);
+        return previews;
+    }
 
     /* ----- game flow ----- */
     function startGame() {
         gameId++;
         thinking = false;
         recorded = false;
-        S = newState(ui.N, nextStarter);
+        if (DEMO) { ui.arena = DEMO_ARENAS[demoRound++ % DEMO_ARENAS.length]; syncControls(); }
+        S = newState(ui.arena, nextStarter);
         nextStarter = 3 - nextStarter;
-        anim = null; preview = null; hoverColor = null;
+        anim = null; preview = null; hoverColor = null; previews = null;
         render();
         if (!modalOpen) Platform.gameplayStart();
         maybeCpuMove();
@@ -78,16 +90,16 @@
     }
 
     function applyMove(c) {
-        const got = playMove(S, c);
-        preview = null; hoverColor = null;
-        startAnim(got);
+        const res = playMove(S, c);
+        preview = null; hoverColor = null; previews = null;
+        startAnim(res);
         if (S.over && !recorded) {
             recorded = true;
             const w = winner(S);
             if (w === 0) series.draws++; else series[w]++;
             Platform.gameplayStop();
             if (!DEMO && ui.mode === "cpu" && ui.level === "hard" && w === 1) Platform.happytime();
-            if (DEMO) setTimeout(startGame, 2200);
+            if (DEMO) setTimeout(startGame, 1800);
         }
         render();
         maybeCpuMove();
@@ -128,16 +140,19 @@
     $("rulesModal").addEventListener("click", e => { if (e.target === $("rulesModal")) closeRules(); });
 
     /* ----- animation ----- */
-    function startAnim(got) {
-        if (reduceMotion || !got.length) { anim = null; return; }
+    const STEP = 26;   // ms per flood step
+    function startAnim(res) {
+        if (reduceMotion || !res.cells.length) { anim = null; return; }
         const delays = new Map();
         let maxD = 0;
-        for (const [j, d] of got) {
-            const ms = Math.min(d, 24) * 26;
+        for (const [j, d] of res.cells) {
+            const ms = Math.min(d, 30) * STEP;
             delays.set(j, ms);
             if (ms > maxD) maxD = ms;
         }
-        anim = { t0: performance.now(), delays, end: maxD + 260 };
+        const rings = res.events.filter(e => e.type === "burst" || e.type === "raid")
+            .map(e => ({ at: e.at, type: e.type, t: Math.min(e.d, 30) * STEP }));
+        anim = { t0: performance.now(), delays, rings, end: maxD + 520 };
         requestAnimationFrame(tick);
     }
     function tick(now) {
@@ -149,12 +164,6 @@
     const ease = t => 1 - Math.pow(1 - t, 3);
 
     /* ----- drawing ----- */
-    function roundRect(x, y, w, h, r) {
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
-        ctx.fill();
-    }
-
     function draw(now) {
         if (!S) return;
         const W = cv.getBoundingClientRect().width;
@@ -168,27 +177,34 @@
         const N = S.N, s = W / N, gap = Math.max(1.5, s * 0.1);
         const t = anim && now ? now - anim.t0 : null;
 
-        // cells: unclaimed cells are rounded tiles, claimed cells melt into a solid patch
+        // cells: free tiles are rounded, claimed tiles melt into a solid patch
         for (let i = 0; i < N * N; i++) {
-            const x = (i % N) * s, y = ((i / N) | 0) * s;
-            let k = S.owner[i] ? 1 : 0;
+            const x = (i % N) * s, y = ((i / N) | 0) * s, o = S.owner[i];
+            if (o === WALL) { Art.wall(ctx, x, y, s); continue; }
+            let k = o ? 1 : 0;
             if (k && t !== null && anim.delays.has(i)) {
                 k = ease(Math.max(0, Math.min(1, (t - anim.delays.get(i)) / 240)));
             }
-            ctx.fillStyle = COLORS[S.color[i]].hex;
+            const inset = (gap / 2) * (1 - k), rad = s * 0.24 * (1 - k);
+            if (!o && S.special[i] === PRISM) { Art.prism(ctx, x, y, s, inset, rad); continue; }
+            const col = COLORS[S.color[i]];
+            ctx.fillStyle = col ? col.hex : "#888";
             if (k >= 1) ctx.fillRect(x - 0.3, y - 0.3, s + 0.6, s + 0.6);
             else {
-                const inset = (gap / 2) * (1 - k);
-                roundRect(x + inset, y + inset, s - inset * 2, s - inset * 2, s * 0.24 * (1 - k));
+                Art.rounded(ctx, x + inset, y + inset, s - inset * 2, s - inset * 2, rad);
+                ctx.fill();
             }
+            if (!o && S.special[i] === BURST) Art.burst(ctx, x, y, s);
+            if (!o && S.special[i] === RAID) Art.raid(ctx, x, y, s);
         }
 
-        // preview dots on the cells the hovered colour would grab
+        // preview dots on the tiles the hovered colour would grab (including Burst and Raid effects)
         if (preview && preview.size) {
             for (const i of preview) {
                 const c = i % N, r = (i / N) | 0;
                 ctx.fillStyle = "rgba(255,255,255,0.22)";
-                roundRect(c * s + gap / 2, r * s + gap / 2, s - gap, s - gap, s * 0.24);
+                Art.rounded(ctx, c * s + gap / 2, r * s + gap / 2, s - gap, s - gap, s * 0.24);
+                ctx.fill();
                 ctx.fillStyle = S.turn === 1 ? P1_INK : P2_INK;
                 ctx.beginPath();
                 ctx.arc(c * s + s / 2, r * s + s / 2, Math.max(2, s * 0.13), 0, Math.PI * 2);
@@ -212,6 +228,20 @@
                 if (c === N - 1 || S.owner[i + 1] !== p) { ctx.moveTo(x + s - h, y); ctx.lineTo(x + s - h, y + s); }
             }
             ctx.stroke();
+        }
+
+        // Burst and Raid shockwaves
+        if (anim && t !== null) {
+            for (const ring of anim.rings) {
+                const u = (t - ring.t) / 460;
+                if (u <= 0 || u >= 1) continue;
+                const cx = (ring.at % N) * s + s / 2, cy = ((ring.at / N) | 0) * s + s / 2;
+                ctx.beginPath();
+                ctx.arc(cx, cy, s * (0.4 + ease(u) * (ring.type === "burst" ? 1.6 : 2.6)), 0, Math.PI * 2);
+                ctx.lineWidth = Math.max(2, s * 0.16) * (1 - u);
+                ctx.strokeStyle = ring.type === "burst" ? `rgba(245,240,230,${1 - u})` : `rgba(255,214,90,${1 - u})`;
+                ctx.stroke();
+            }
         }
 
         // home badges
@@ -248,18 +278,36 @@
         b.addEventListener("blur", () => setPreview(null));
         palette.appendChild(b);
     });
+    const paintLegend = () => document.querySelectorAll(".ico").forEach(c => Art.legendIcon(c, c.dataset.kind));
 
     function setPreview(c) {
         if (c === null || !humanCanMove() || !isLegal(S, c)) { preview = null; hoverColor = null; }
-        else { hoverColor = c; preview = new Set(flood(S, S.turn, c, false).map(([j]) => j)); }
+        else { hoverColor = c; preview = new Set(getPreviews().by[c].cells); }
         document.querySelectorAll(".sw").forEach(b => b.classList.toggle("hot", Number(b.dataset.c) === hoverColor));
         if (!anim) draw();
+    }
+
+    // One line about what the last move set off
+    function eventNote(nm) {
+        const you = ui.mode === "cpu" && !DEMO;
+        const parts = [];
+        for (const e of S.events) {
+            const who = nm[e.by], whom = nm[3 - e.by];
+            if (e.type === "burst") parts.push(`${who} set off a Burst: +${e.n + 1} tiles.`);
+            if (e.type === "raid") {
+                if (!e.n) parts.push(`${who} found a Raid, but there was nothing to steal.`);
+                else if (you && e.by === 2) parts.push(`The computer raided ${e.n} of your tiles!`);
+                else if (you) parts.push(`You raided ${e.n} of the computer's tiles!`);
+                else parts.push(`${who} raided ${e.n} tiles from ${whom}!`);
+            }
+        }
+        return parts.join(" ");
     }
 
     function render() {
         const nm = DEMO ? { 1: "Hard bot", 2: "Medium bot" } : names();
         const [n1, n2, n0] = counts(S);
-        const total = S.N * S.N;
+        const total = S.playable;
 
         $("n1").textContent = nm[1];
         $("n2").textContent = nm[2];
@@ -287,12 +335,12 @@
         else if (ui.mode === "cpu") st.innerHTML = `<span class="chip p1">1</span> Your turn, pick a colour`;
         else st.innerHTML = `<span class="chip p${S.turn}">${S.turn}</span> ${nm[S.turn]}, pick a colour`;
 
-        // note line
-        let note = "";
+        // note line: power tile effects first, then sealed-in or who moves first
+        let note = eventNote(nm);
         if (S.note.startsWith("sealed:")) {
             const q = Number(S.note.slice(7));
             const you = ui.mode === "cpu" && !DEMO;
-            note = `${nm[q]} ${you && q === 1 ? "are" : "is"} sealed in, so ${nm[3 - q]} ${you && q === 2 ? "go" : "goes"} again.`;
+            note += (note ? " " : "") + `${nm[q]} ${you && q === 1 ? "are" : "is"} sealed in, so ${nm[3 - q]} ${you && q === 2 ? "go" : "goes"} again.`;
         } else if (S.moves === 0 && !DEMO) {
             note = ui.mode === "cpu"
                 ? (S.starter === 1 ? "You move first this round." : "The computer moves first this round.")
@@ -302,6 +350,7 @@
         $("note").textContent = note;
 
         // colour buttons
+        const pv = !S.over && !cpu ? getPreviews() : null;
         COLORS.forEach((col, i) => {
             const b = $("sw" + i), gainEl = b.querySelector(".gain");
             b.disabled = cpu || !isLegal(S, i);
@@ -310,9 +359,10 @@
             else if (i === S.pColor[S.turn]) { gainEl.textContent = "Yours"; b.setAttribute("aria-label", `${col.name}, your current colour`); }
             else if (i === S.pColor[3 - S.turn]) { gainEl.textContent = "Rival"; b.setAttribute("aria-label", `${col.name}, your rival's colour`); }
             else {
-                const g = flood(S, S.turn, i, false).length;
-                gainEl.textContent = "+" + g;
-                b.setAttribute("aria-label", `${col.name}, grabs ${g} cells`);
+                const p = pv.by[i];
+                const power = p.events.some(e => e.type === "burst" || e.type === "raid");
+                gainEl.textContent = "+" + p.gain + (power ? "★" : "");
+                b.setAttribute("aria-label", `${col.name}, grabs ${p.gain} tiles${power ? " and sets off a power tile" : ""}`);
             }
         });
 
@@ -328,8 +378,8 @@
             const stallTxt = S.note === "stall" ? "Board locked up with no captures for 3 turns each. " : "";
             $("resTitle").textContent = title;
             $("resSub").textContent = stallTxt + (w === 0
-                ? `${n1} cells each after ${S.moves} moves.`
-                : `${wn} to ${ln} in ${S.moves} moves${levelTxt}. Series ${series[1]}–${series[2]}.`);
+                ? `${n1} tiles each after ${S.moves} moves in ${ARENAS[S.arena].name}.`
+                : `${wn} to ${ln} in ${S.moves} moves, ${ARENAS[S.arena].name}${levelTxt}. Series ${series[1]}–${series[2]}.`);
             ov.hidden = false;
         } else ov.hidden = true;
 
@@ -341,7 +391,7 @@
         $("modePvp").setAttribute("aria-pressed", String(ui.mode === "pvp"));
         $("levelField").hidden = ui.mode !== "cpu";
         $("level").value = ui.level;
-        $("size").value = String(ui.N);
+        $("arena").value = ui.arena;
     }
 
     /* ----- input ----- */
@@ -352,15 +402,20 @@
         const s = rect.width / S.N;
         return Math.floor(y / s) * S.N + Math.floor(x / s);
     }
+    // Colour of a tapped tile, or null for walls and prisms (which have no single colour)
+    function colourAt(i) {
+        if (i < 0 || S.owner[i] === WALL) return null;
+        const c = S.color[i];
+        return c < COLORS.length ? c : null;
+    }
     cv.addEventListener("click", ev => {
         if (!S) return;
-        const i = cellAt(ev);
-        if (i >= 0) humanMove(S.color[i]);
+        const c = colourAt(cellAt(ev));
+        if (c !== null) humanMove(c);
     });
     cv.addEventListener("mousemove", ev => {
         if (!S) return;
-        const i = cellAt(ev);
-        const c = i >= 0 ? S.color[i] : null;
+        const c = colourAt(cellAt(ev));
         if (c !== hoverColor) setPreview(c);
     });
     cv.addEventListener("mouseleave", () => setPreview(null));
@@ -382,12 +437,12 @@
     $("modeCpu").addEventListener("click", () => { if (ui.mode !== "cpu") changeSettings({ mode: "cpu" }); });
     $("modePvp").addEventListener("click", () => { if (ui.mode !== "pvp") changeSettings({ mode: "pvp" }); });
     $("level").addEventListener("change", e => changeSettings({ level: e.target.value }));
-    $("size").addEventListener("change", e => changeSettings({ N: Number(e.target.value) }));
+    $("arena").addEventListener("change", e => changeSettings({ arena: e.target.value }));
     $("newBtn").addEventListener("click", nextRound);
     $("againBtn").addEventListener("click", nextRound);
 
-    if (window.ResizeObserver) new ResizeObserver(() => { if (!anim) draw(); }).observe(cv);
-    else window.addEventListener("resize", () => draw());
+    if (window.ResizeObserver) new ResizeObserver(() => { if (!anim) draw(); paintLegend(); }).observe(cv);
+    else window.addEventListener("resize", () => { draw(); paintLegend(); });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => draw());
 
     /* ----- boot ----- */
@@ -396,6 +451,7 @@
         Platform.loadingStart();
         loadPrefs();
         syncControls();
+        paintLegend();
         Platform.loadingStop();
         startGame();
     })();

@@ -11,6 +11,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<script src="../art.js"></script>
 <script>
 /* Renders the store cover at ?w=1920&h=1080. Same seed every time, so all
    three sizes show the same battle. Only the game title appears as text. */
@@ -99,6 +100,30 @@ for (const p of [1, 2]) {
 const g = x.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.62);
 g.addColorStop(0, "rgba(16,18,24,0.72)"); g.addColorStop(0.55, "rgba(16,18,24,0.35)"); g.addColorStop(1, "rgba(16,18,24,0)");
 x.fillStyle = g; x.fillRect(0, 0, W, H);
+
+// Power tiles on free cells away from the title, same pattern on every cover
+const kinds = ["burst", "prism", "raid", "burst", "prism"];
+const freeCells = [];
+for (let i = 0; i < R * C; i++) {
+    if (owner[i]) continue;
+    const cx = ox + (i % C) * cell + cell / 2, cy = oy + ((i / C) | 0) * cell + cell / 2;
+    const dx = (cx - W / 2) / W, dy = (cy - H / 2) / H;
+    if (Math.hypot(dx, dy) > 0.37 && cx > cell && cx < W - cell && cy > cell && cy < H - cell) freeCells.push(i);
+}
+const used = [];
+for (const kind of kinds) {
+    for (let tries = 0; tries < 200; tries++) {
+        const i = freeCells[(rnd() * freeCells.length) | 0];
+        const r = (i / C) | 0, c = i % C;
+        if (used.some(j => Math.abs(((j / C) | 0) - r) + Math.abs((j % C) - c) < 3)) continue;
+        used.push(i);
+        const cx = ox + c * cell, cy = oy + r * cell;
+        if (kind === "prism") Art.prism(x, cx, cy, cell, gap / 2, cell * 0.24);
+        else (kind === "burst" ? Art.burst : Art.raid)(x, cx, cy, cell);
+        break;
+    }
+}
+
 
 document.fonts.load('100px "Dela Gothic One"').then(() => {
     const portrait = H > W * 1.2;
