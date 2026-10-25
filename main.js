@@ -1,275 +1,19 @@
 "use strict";
 
 /* =========================================================
-   Colour Flood Duel
-   1. Game rules (pure functions on a state object)
-   2. Computer opponent (Easy / Medium / Hard)
-   3. Drawing the board
-   4. UI wiring
+   Colour Flood Duel: drawing and UI
+   Uses the rules in game.js and the portal hooks in platform.js.
+   ?demo=1 makes the computer play both sides (for trailers).
    ========================================================= */
 
-const COLORS = [
-    { name: "Tomato", hex: "#e8553d" },
-    { name: "Marigold", hex: "#f2b33d" },
-    { name: "Leaf", hex: "#4fa36a" },
-    { name: "Lagoon", hex: "#2f8fb8" },
-    { name: "Violet", hex: "#7a5cc7" },
-    { name: "Blush", hex: "#e77fb0" }
-];
-const P1_INK = "#f5f0e6";
-const P2_INK = "#15171c";
-const STALL_LIMIT = 6; // this many moves in a row with no captures ends the game
-
-/* ---------------------------------------------------------
-   1. Game rules
-   State: { N, color[], owner[], pColor[_, p1, p2], turn, starter, moves, over, note }
-   owner: 0 = unclaimed, 1 = player 1, 2 = player 2
-   --------------------------------------------------------- */
-
-function neighbours(i, N) {
-    const r = (i / N) | 0, c = i % N, out = [];
-    if (r > 0) out.push(i - N);
-    if (r < N - 1) out.push(i + N);
-    if (c > 0) out.push(i - 1);
-    if (c < N - 1) out.push(i + 1);
-    return out;
-}
-
-// Returns the cells player p would absorb by switching to colour c, as [index, depth] pairs.
-// With apply = true it also claims them.
-function flood(st, p, c, apply) {
-    const N = st.N, seen = new Uint8Array(N * N), queue = [], out = [];
-    for (let i = 0; i < N * N; i++) {
-        if (st.owner[i] === p) { queue.push(i, 0); seen[i] = 1; }
-    }
-    for (let h = 0; h < queue.length; h += 2) {
-        const i = queue[h], d = queue[h + 1];
-        for (const j of neighbours(i, N)) {
-            if (!seen[j] && st.owner[j] === 0 && st.color[j] === c) {
-                seen[j] = 1;
-                out.push([j, d + 1]);
-                queue.push(j, d + 1);
-            }
-        }
-    }
-    if (apply) for (const [j] of out) st.owner[j] = p;
-    return out;
-}
-
-function counts(st) {
-    let a = 0, b = 0, z = 0;
-    for (let i = 0; i < st.owner.length; i++) {
-        const o = st.owner[i];
-        if (o === 1) a++; else if (o === 2) b++; else z++;
-    }
-    return [a, b, z];
-}
-
-// Does player p touch any unclaimed cell?
-function hasFrontier(st, p) {
-    const N = st.N;
-    for (let i = 0; i < N * N; i++) {
-        if (st.owner[i] !== p) continue;
-        for (const j of neighbours(i, N)) if (st.owner[j] === 0) return true;
-    }
-    return false;
-}
-
-// Can player p capture anything this turn? (Neighbouring cells in the rival's colour are off limits.)
-function canCapture(st, p) {
-    const N = st.N, blocked = st.pColor[3 - p];
-    for (let i = 0; i < N * N; i++) {
-        if (st.owner[i] !== p) continue;
-        for (const j of neighbours(i, N)) {
-            if (st.owner[j] === 0 && st.color[j] !== blocked) return true;
-        }
-    }
-    return false;
-}
-
-function legalMoves(st, p) {
-    const out = [];
-    for (let c = 0; c < COLORS.length; c++) {
-        if (c !== st.pColor[1] && c !== st.pColor[2]) out.push(c);
-    }
-    return out;
-}
-
-function isLegal(st, c) {
-    return !st.over && c !== st.pColor[1] && c !== st.pColor[2];
-}
-
-function newState(N, starter) {
-    const color = new Uint8Array(N * N);
-    for (let i = 0; i < color.length; i++) color[i] = (Math.random() * COLORS.length) | 0;
-    const a = 0, b = N * N - 1;
-    if (color[b] === color[a]) {
-        color[b] = (color[a] + 1 + ((Math.random() * (COLORS.length - 1)) | 0)) % COLORS.length;
-    }
-    const st = {
-        N, color, owner: new Uint8Array(N * N),
-        pColor: [null, color[a], color[b]],
-        turn: starter, starter, moves: 0, idle: 0, over: false, note: ""
-    };
-    st.owner[a] = 1;
-    st.owner[b] = 2;
-    flood(st, 1, color[a], true);
-    flood(st, 2, color[b], true);
-    return st;
-}
-
-function cloneState(st) {
-    return {
-        N: st.N, color: st.color.slice(), owner: st.owner.slice(), pColor: st.pColor.slice(),
-        turn: st.turn, starter: st.starter, moves: st.moves, idle: st.idle, over: st.over, note: st.note
-    };
-}
-
-// Plays colour c for whoever's turn it is. Returns the captured cells.
-function playMove(st, c) {
-    const p = st.turn;
-    for (let i = 0; i < st.color.length; i++) if (st.owner[i] === p) st.color[i] = c;
-    st.pColor[p] = c;
-    const got = flood(st, p, c, true);
-    st.moves++;
-    st.idle = got.length ? 0 : st.idle + 1;
-    resolveTurn(st, p);
-    return got;
-}
-
-// Decides what happens after player p moved: game over, next player's turn, or p again.
-function resolveTurn(st, p) {
-    const [n1, n2, n0] = counts(st);
-    const half = (st.N * st.N) / 2;
-    st.note = "";
-    if (n0 === 0 || n1 > half || n2 > half) { st.over = true; return; }
-    if (st.idle >= STALL_LIMIT) { st.over = true; st.note = "stall"; return; }
-
-    const q = 3 - p;
-    const qOpen = hasFrontier(st, q), pOpen = hasFrontier(st, p);
-    if (qOpen && pOpen) { st.turn = q; return; }
-    if (qOpen && !pOpen) {
-        // p is sealed in, q plays on alone while there is something left to take
-        if (canCapture(st, q)) st.turn = q; else st.over = true;
-        return;
-    }
-    if (!qOpen && pOpen) {
-        if (canCapture(st, p)) { st.turn = p; st.note = "sealed:" + q; } else st.over = true;
-        return;
-    }
-    st.over = true;
-}
-
-function winner(st) {
-    const [n1, n2] = counts(st);
-    return n1 === n2 ? 0 : n1 > n2 ? 1 : 2;
-}
-
-/* ---------------------------------------------------------
-   2. Computer opponent
-   Easy:   random colour, preferring ones that capture something
-   Medium: greedy, takes the biggest grab right now
-   Hard:   looks 4 moves ahead (minimax with alpha-beta pruning)
-   --------------------------------------------------------- */
-
-function pick(list) { return list[(Math.random() * list.length) | 0]; }
-
-function chooseMove(st, level) {
-    const p = st.turn;
-    const moves = legalMoves(st, p);
-    const gains = moves.map(c => flood(st, p, c, false).length);
-
-    if (level === "easy") {
-        const useful = moves.filter((c, k) => gains[k] > 0);
-        return pick(useful.length ? useful : moves);
-    }
-
-    if (level === "medium") {
-        const best = Math.max(...gains);
-        return pick(moves.filter((c, k) => gains[k] === best));
-    }
-
-    // hard
-    const order = moves.map((c, k) => [c, gains[k]]).sort((x, y) => y[1] - x[1]);
-    let bestScore = -Infinity, bestMoves = [];
-    for (const [c] of order) {
-        const s2 = cloneState(st);
-        playMove(s2, c);
-        const v = search(s2, 3, -Infinity, Infinity, p);
-        if (v > bestScore + 1e-9) { bestScore = v; bestMoves = [c]; }
-        else if (Math.abs(v - bestScore) < 1e-9) bestMoves.push(c);
-    }
-    return pick(bestMoves);
-}
-
-function search(st, depth, alpha, beta, me) {
-    if (st.over || depth === 0) return evaluate(st, me);
-    const p = st.turn;
-    const moves = legalMoves(st, p)
-        .map(c => [c, flood(st, p, c, false).length])
-        .sort((x, y) => y[1] - x[1]);
-
-    if (p === me) {
-        let v = -Infinity;
-        for (const [c] of moves) {
-            const s2 = cloneState(st);
-            playMove(s2, c);
-            v = Math.max(v, search(s2, depth - 1, alpha, beta, me));
-            alpha = Math.max(alpha, v);
-            if (alpha >= beta) break;
-        }
-        return v;
-    }
-    let v = Infinity;
-    for (const [c] of moves) {
-        const s2 = cloneState(st);
-        playMove(s2, c);
-        v = Math.min(v, search(s2, depth - 1, alpha, beta, me));
-        beta = Math.min(beta, v);
-        if (alpha >= beta) break;
-    }
-    return v;
-}
-
-// Score from `me`'s point of view: cell lead, plus a little credit for how much open border each side has.
-function evaluate(st, me) {
-    const [n1, n2] = counts(st);
-    const mine = me === 1 ? n1 : n2, theirs = me === 1 ? n2 : n1;
-    if (st.over) {
-        if (mine === theirs) return 0;
-        return (mine > theirs ? 1000 : -1000) + (mine - theirs);
-    }
-    const N = st.N;
-    let myEdge = 0, theirEdge = 0;
-    for (let i = 0; i < N * N; i++) {
-        if (st.owner[i] !== 0) continue;
-        let touchMe = false, touchThem = false;
-        for (const j of neighbours(i, N)) {
-            if (st.owner[j] === me) touchMe = true;
-            else if (st.owner[j] === 3 - me) touchThem = true;
-        }
-        if (touchMe) myEdge++;
-        if (touchThem) theirEdge++;
-    }
-    return (mine - theirs) + 0.35 * (myEdge - theirEdge);
-}
-
-/* ---------------------------------------------------------
-   Node export so the rules can be tested outside the browser
-   --------------------------------------------------------- */
-if (typeof module !== "undefined" && module.exports) {
-    module.exports = { COLORS, newState, cloneState, playMove, legalMoves, chooseMove, counts, winner, flood, hasFrontier };
-}
-
-/* ---------------------------------------------------------
-   3 + 4. Drawing and UI (browser only)
-   --------------------------------------------------------- */
-if (typeof document !== "undefined") (function () {
+(function () {
     const $ = id => document.getElementById(id);
     const cv = $("board");
     const ctx = cv.getContext("2d");
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const CPU_DELAY = 650;
+    const params = new URLSearchParams(location.search);
+    const DEMO = params.get("demo") === "1";
+    const CPU_DELAY = DEMO ? 380 : 650;
 
     const ui = { mode: "cpu", level: "medium", N: 12 };
     let S = null;              // current game
@@ -278,24 +22,25 @@ if (typeof document !== "undefined") (function () {
     let gameId = 0;            // invalidates pending computer moves when a new game starts
     let thinking = false;
     let recorded = false;
+    let modalOpen = false;
     let anim = null, preview = null, hoverColor = null;
 
     /* ----- helpers ----- */
     const names = () => ui.mode === "cpu" ? { 1: "You", 2: "Computer" } : { 1: "Player 1", 2: "Player 2" };
-    const isCpuTurn = () => ui.mode === "cpu" && S && !S.over && S.turn === 2;
-    const humanCanMove = () => S && !S.over && !thinking && !isCpuTurn();
+    const isCpuTurn = () => S && !S.over && (DEMO || (ui.mode === "cpu" && S.turn === 2));
+    const blocked = () => modalOpen || Platform.adBusy;
+    const humanCanMove = () => S && !S.over && !thinking && !isCpuTurn() && !blocked();
 
     function loadPrefs() {
         try {
-            const p = JSON.parse(localStorage.getItem("cfd-prefs") || "{}");
+            const p = JSON.parse(Platform.load("cfd-prefs") || "{}");
             if (p.mode === "cpu" || p.mode === "pvp") ui.mode = p.mode;
             if (["easy", "medium", "hard"].includes(p.level)) ui.level = p.level;
             if ([10, 12, 14].includes(p.N)) ui.N = p.N;
-        } catch (e) { /* storage unavailable */ }
+        } catch (e) { /* ignore bad data */ }
+        if (DEMO) { ui.mode = "cpu"; ui.level = "hard"; }
     }
-    function savePrefs() {
-        try { localStorage.setItem("cfd-prefs", JSON.stringify(ui)); } catch (e) { /* ignore */ }
-    }
+    const savePrefs = () => Platform.save("cfd-prefs", JSON.stringify(ui));
 
     /* ----- game flow ----- */
     function startGame() {
@@ -306,7 +51,20 @@ if (typeof document !== "undefined") (function () {
         nextStarter = 3 - nextStarter;
         anim = null; preview = null; hoverColor = null;
         render();
+        if (!modalOpen) Platform.gameplayStart();
         maybeCpuMove();
+    }
+
+    // Between rounds is the natural break for an ad. If there is no ad
+    // (own website, ad blocker, cooldown) the next round starts straight away.
+    async function nextRound() {
+        if (Platform.adBusy) return;
+        if (S && S.over) {
+            $("againBtn").disabled = true;
+            await Platform.midgameAd();
+            $("againBtn").disabled = false;
+        }
+        startGame();
     }
 
     function resetSeries() {
@@ -327,24 +85,47 @@ if (typeof document !== "undefined") (function () {
             recorded = true;
             const w = winner(S);
             if (w === 0) series.draws++; else series[w]++;
+            Platform.gameplayStop();
+            if (!DEMO && ui.mode === "cpu" && ui.level === "hard" && w === 1) Platform.happytime();
+            if (DEMO) setTimeout(startGame, 2200);
         }
         render();
         maybeCpuMove();
     }
 
     function maybeCpuMove() {
-        if (!isCpuTurn()) return;
+        if (!isCpuTurn() || blocked()) return;
         thinking = true;
         render();
         const id = gameId;
         setTimeout(() => {
             if (id !== gameId) return;
-            const c = chooseMove(cloneState(S), ui.level);
+            if (blocked()) { thinking = false; return; }   // resumes when the modal closes
+            const level = DEMO ? (S.turn === 1 ? "hard" : "medium") : ui.level;
+            const c = chooseMove(cloneState(S), level);
             thinking = false;
-            if (id !== gameId) return;
             applyMove(c);
         }, CPU_DELAY);
     }
+
+    /* ----- rules modal ----- */
+    $("rulesModalList").innerHTML = $("rulesList").innerHTML;
+    function openRules() {
+        modalOpen = true;
+        $("rulesModal").hidden = false;
+        Platform.gameplayStop();
+        $("rulesClose").focus();
+    }
+    function closeRules() {
+        modalOpen = false;
+        $("rulesModal").hidden = true;
+        if (S && !S.over) Platform.gameplayStart();
+        render();
+        maybeCpuMove();
+    }
+    $("rulesBtn").addEventListener("click", openRules);
+    $("rulesClose").addEventListener("click", closeRules);
+    $("rulesModal").addEventListener("click", e => { if (e.target === $("rulesModal")) closeRules(); });
 
     /* ----- animation ----- */
     function startAnim(got) {
@@ -476,7 +257,7 @@ if (typeof document !== "undefined") (function () {
     }
 
     function render() {
-        const nm = names();
+        const nm = DEMO ? { 1: "Hard bot", 2: "Medium bot" } : names();
         const [n1, n2, n0] = counts(S);
         const total = S.N * S.N;
 
@@ -500,8 +281,9 @@ if (typeof document !== "undefined") (function () {
 
         // status line
         const st = $("status");
+        const cpu = isCpuTurn();
         if (S.over) st.textContent = "Game over";
-        else if (isCpuTurn()) st.innerHTML = `<span class="chip p2">2</span> Computer is thinking <span class="dots"><i></i><i></i><i></i></span>`;
+        else if (cpu) st.innerHTML = `<span class="chip p${S.turn}">${S.turn}</span> ${DEMO ? nm[S.turn] : "Computer"} is thinking <span class="dots"><i></i><i></i><i></i></span>`;
         else if (ui.mode === "cpu") st.innerHTML = `<span class="chip p1">1</span> Your turn, pick a colour`;
         else st.innerHTML = `<span class="chip p${S.turn}">${S.turn}</span> ${nm[S.turn]}, pick a colour`;
 
@@ -509,8 +291,9 @@ if (typeof document !== "undefined") (function () {
         let note = "";
         if (S.note.startsWith("sealed:")) {
             const q = Number(S.note.slice(7));
-            note = `${nm[q]} ${ui.mode === "cpu" && q === 1 ? "are" : "is"} sealed in, so ${nm[3 - q]} ${ui.mode === "cpu" && q === 2 ? "go" : "goes"} again.`;
-        } else if (S.moves === 0) {
+            const you = ui.mode === "cpu" && !DEMO;
+            note = `${nm[q]} ${you && q === 1 ? "are" : "is"} sealed in, so ${nm[3 - q]} ${you && q === 2 ? "go" : "goes"} again.`;
+        } else if (S.moves === 0 && !DEMO) {
             note = ui.mode === "cpu"
                 ? (S.starter === 1 ? "You move first this round." : "The computer moves first this round.")
                 : `${nm[S.starter]} moves first this round.`;
@@ -519,7 +302,6 @@ if (typeof document !== "undefined") (function () {
         $("note").textContent = note;
 
         // colour buttons
-        const cpu = isCpuTurn();
         COLORS.forEach((col, i) => {
             const b = $("sw" + i), gainEl = b.querySelector(".gain");
             b.disabled = cpu || !isLegal(S, i);
@@ -536,15 +318,15 @@ if (typeof document !== "undefined") (function () {
 
         // result card
         const ov = $("overlay");
-        if (S.over) {
+        if (S.over && !DEMO) {
             const w = winner(S), wn = Math.max(n1, n2), ln = Math.min(n1, n2);
             let title;
             if (w === 0) title = "It's a draw";
             else if (ui.mode === "cpu") title = w === 1 ? "You win!" : "Computer wins";
             else title = `${nm[w]} wins`;
             const levelTxt = ui.mode === "cpu" ? ` on ${ui.level[0].toUpperCase() + ui.level.slice(1)}` : "";
-            $("resTitle").textContent = title;
             const stallTxt = S.note === "stall" ? "Board locked up with no captures for 3 turns each. " : "";
+            $("resTitle").textContent = title;
             $("resSub").textContent = stallTxt + (w === 0
                 ? `${n1} cells each after ${S.moves} moves.`
                 : `${wn} to ${ln} in ${S.moves} moves${levelTxt}. Series ${series[1]}–${series[2]}.`);
@@ -571,10 +353,12 @@ if (typeof document !== "undefined") (function () {
         return Math.floor(y / s) * S.N + Math.floor(x / s);
     }
     cv.addEventListener("click", ev => {
+        if (!S) return;
         const i = cellAt(ev);
         if (i >= 0) humanMove(S.color[i]);
     });
     cv.addEventListener("mousemove", ev => {
+        if (!S) return;
         const i = cellAt(ev);
         const c = i >= 0 ? S.color[i] : null;
         if (c !== hoverColor) setPreview(c);
@@ -582,6 +366,7 @@ if (typeof document !== "undefined") (function () {
     cv.addEventListener("mouseleave", () => setPreview(null));
 
     document.addEventListener("keydown", ev => {
+        if (modalOpen && ev.key === "Escape") { closeRules(); return; }
         if (ev.target.tagName === "SELECT" || ev.metaKey || ev.ctrlKey || ev.altKey) return;
         const n = Number(ev.key);
         if (n >= 1 && n <= COLORS.length) humanMove(n - 1);
@@ -598,14 +383,20 @@ if (typeof document !== "undefined") (function () {
     $("modePvp").addEventListener("click", () => { if (ui.mode !== "pvp") changeSettings({ mode: "pvp" }); });
     $("level").addEventListener("change", e => changeSettings({ level: e.target.value }));
     $("size").addEventListener("change", e => changeSettings({ N: Number(e.target.value) }));
-    $("newBtn").addEventListener("click", startGame);
-    $("againBtn").addEventListener("click", startGame);
+    $("newBtn").addEventListener("click", nextRound);
+    $("againBtn").addEventListener("click", nextRound);
 
     if (window.ResizeObserver) new ResizeObserver(() => { if (!anim) draw(); }).observe(cv);
     else window.addEventListener("resize", () => draw());
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => draw());
 
-    loadPrefs();
-    syncControls();
-    startGame();
+    /* ----- boot ----- */
+    (async function boot() {
+        await Platform.init();
+        Platform.loadingStart();
+        loadPrefs();
+        syncControls();
+        Platform.loadingStop();
+        startGame();
+    })();
 })();

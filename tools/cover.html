@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Colour Flood Duel cover</title>
+<style>
+    @font-face { font-family: "Dela Gothic One"; src: url("../fonts/dela-gothic-one-latin-400-normal.woff2") format("woff2"); }
+    html, body { margin: 0; background: #262a33; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+/* Renders the store cover at ?w=1920&h=1080. Same seed every time, so all
+   three sizes show the same battle. Only the game title appears as text. */
+const P = new URLSearchParams(location.search);
+const W = +P.get("w") || 1920, H = +P.get("h") || 1080;
+const COLORS = ["#e8553d", "#f2b33d", "#4fa36a", "#2f8fb8", "#7a5cc7", "#e77fb0"];
+const P1 = "#f5f0e6", P2 = "#15171c";
+
+let seed = 20261026;
+const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+
+// Cell size follows the shorter side so every cover shows about the same density
+const cell = Math.round(Math.min(W, H) / 9.5);
+const C = Math.ceil(W / cell) + 1, R = Math.ceil(H / cell) + 1;
+const color = Array.from({ length: R * C }, () => (rnd() * 6) | 0);
+const owner = new Array(R * C).fill(0);
+const nb = i => { const r = (i / C) | 0, c = i % C, o = [];
+    if (r) o.push(i - C); if (r < R - 1) o.push(i + C); if (c) o.push(i - 1); if (c < C - 1) o.push(i + 1); return o; };
+function grow(p, col) {
+    for (let i = 0; i < owner.length; i++) if (owner[i] === p) color[i] = col;
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (let i = 0; i < owner.length; i++) {
+            if (owner[i] !== p) continue;
+            for (const j of nb(i)) if (!owner[j] && color[j] === col) { owner[j] = p; changed = true; }
+        }
+    }
+}
+function gain(p, col) {
+    const o = owner.slice(), cl = color.slice();
+    grow(p, col);
+    const n = owner.filter(x => x === p).length;
+    owner.splice(0, owner.length, ...o); color.splice(0, color.length, ...cl);
+    return n;
+}
+owner[0] = 1; owner[R * C - 1] = 2;
+const pc = [null, color[0], color[R * C - 1] === color[0] ? (color[0] + 3) % 6 : color[R * C - 1]];
+color[R * C - 1] = pc[2];
+grow(1, pc[1]); grow(2, pc[2]);
+// Both sides play greedy until each owns roughly a quarter of the board
+for (let t = 0; t < 60; t++) {
+    const p = (t % 2) + 1;
+    if (owner.filter(x => x === p).length > R * C * 0.27) continue;
+    let best = -1, bc = 0;
+    for (let c = 0; c < 6; c++) {
+        if (c === pc[1] || c === pc[2]) continue;
+        const g = gain(p, c) + rnd() * 0.5;
+        if (g > best) { best = g; bc = c; }
+    }
+    pc[p] = bc; grow(p, bc);
+}
+// Same territory colours on every cover: green for player 1, tomato for player 2
+for (let i = 0; i < owner.length; i++) {
+    if (owner[i] === 1) color[i] = 2;
+    else if (owner[i] === 2) color[i] = 0;
+}
+
+const cv = document.getElementById("c");
+cv.width = W; cv.height = H;
+const x = cv.getContext("2d");
+x.fillStyle = "#262a33"; x.fillRect(0, 0, W, H);
+const ox = (W - C * cell) / 2, oy = (H - R * cell) / 2, gap = cell * 0.1;
+for (let i = 0; i < R * C; i++) {
+    const cx = ox + (i % C) * cell, cy = oy + ((i / C) | 0) * cell;
+    x.fillStyle = COLORS[color[i]];
+    if (owner[i]) x.fillRect(cx - 0.5, cy - 0.5, cell + 1, cell + 1);
+    else { x.beginPath(); x.roundRect(cx + gap / 2, cy + gap / 2, cell - gap, cell - gap, cell * 0.24); x.fill(); }
+}
+x.lineWidth = cell * 0.11; x.lineCap = "square";
+for (const p of [1, 2]) {
+    x.strokeStyle = p === 1 ? P1 : P2; x.beginPath();
+    const h = x.lineWidth / 2;
+    for (let i = 0; i < R * C; i++) {
+        if (owner[i] !== p) continue;
+        const r = (i / C) | 0, c = i % C, cx = ox + c * cell, cy = oy + r * cell;
+        if (r === 0 || owner[i - C] !== p) { x.moveTo(cx, cy + h); x.lineTo(cx + cell, cy + h); }
+        if (r === R - 1 || owner[i + C] !== p) { x.moveTo(cx, cy + cell - h); x.lineTo(cx + cell, cy + cell - h); }
+        if (c === 0 || owner[i - 1] !== p) { x.moveTo(cx + h, cy); x.lineTo(cx + h, cy + cell); }
+        if (c === C - 1 || owner[i + 1] !== p) { x.moveTo(cx + cell - h, cy); x.lineTo(cx + cell - h, cy + cell); }
+    }
+    x.stroke();
+}
+
+// Soft dark vignette behind the title so it reads on any colour
+const g = x.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.62);
+g.addColorStop(0, "rgba(16,18,24,0.72)"); g.addColorStop(0.55, "rgba(16,18,24,0.35)"); g.addColorStop(1, "rgba(16,18,24,0)");
+x.fillStyle = g; x.fillRect(0, 0, W, H);
+
+document.fonts.load('100px "Dela Gothic One"').then(() => {
+    const portrait = H > W * 1.2;
+    const lines = portrait ? ["Colour", "Flood", "Duel"] : W === H ? ["Colour", "Flood Duel"] : ["Colour Flood", "Duel"];
+    const size = portrait ? W * 0.205 : W === H ? W * 0.135 : W * 0.092;
+    x.font = `${size}px "Dela Gothic One"`;
+    x.textAlign = "center"; x.textBaseline = "middle";
+    const lh = size * 1.02, top = H / 2 - (lines.length - 1) * lh / 2;
+    lines.forEach((t, k) => {
+        const y = top + k * lh;
+        x.lineJoin = "round"; x.lineWidth = size * 0.16; x.strokeStyle = "#15171c"; x.strokeText(t, W / 2, y + size * 0.06);
+        x.fillStyle = P1; x.fillText(t, W / 2, y);
+    });
+    document.title = "ready";
+});
+</script>
+</body>
+</html>

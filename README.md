@@ -50,13 +50,34 @@ python3 -m http.server 8000
 | File | Contents |
 |---|---|
 | `index.html` | Page structure |
-| `style.css` | Layout and theme, including light and dark mode |
-| `script.js` | Game rules, computer opponent, canvas drawing and UI |
+| `style.css` | Layout and theme: light and dark mode, plus a fit-to-frame layout for game portals |
+| `game.js` | Game rules and the computer opponent (pure functions, no DOM) |
+| `main.js` | Canvas drawing, input and UI |
+| `platform.js` | Portal hooks (CrazyGames SDK). Every call is a no-op on your own site. |
+| `fonts/` | Self-hosted Dela Gothic One and DM Sans (SIL Open Font License) |
+| `tools/build-crazygames.py` | Builds the CrazyGames upload zip into `dist/` |
+| `tools/cover.html` | Renders the store cover images |
 
-The rules in `script.js` are pure functions and are exported for Node, so you can test them outside the browser:
+The rules in `game.js` are exported for Node, so you can test them outside the browser:
 
 ```js
-const G = require("./script.js");
+const G = require("./game.js");
 const st = G.newState(12, 1);
 G.playMove(st, G.chooseMove(G.cloneState(st), "hard"));
 ```
+
+## CrazyGames build
+
+```bash
+python3 tools/build-crazygames.py
+# -> dist/colour-flood-duel-crazygames.zip
+```
+
+The build adds the CrazyGames SDK script and switches on the fit-to-frame layout. In that build the game:
+
+- calls `gameplayStart` / `gameplayStop` when a round starts, ends, or the rules are open
+- requests a midgame ad only when you start the next round after a game ends, and carries on normally if the ad is blocked, unfilled or on cooldown
+- calls `happytime` the first time you beat the Hard computer
+- saves no data of its own
+
+URL options for testing: `?embed=1` shows the portal layout on any site, and `?demo=1` makes the computer play both sides, which was used to record the trailers.
