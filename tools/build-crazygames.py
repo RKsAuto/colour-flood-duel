@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Build the CrazyGames upload package.
 
-Copies the game into dist/crazygames/, adds the CrazyGames SDK script and
-turns on the fit-to-frame layout, then zips it to dist/colour-flood-duel-crazygames.zip.
+Copies the game into dist/crazygames/ as a flat folder (no subfolders, because the
+CrazyGames uploader takes loose files, not archives or folders), adds the CrazyGames
+SDK script and turns on the fit-to-frame layout. A zip of the same files is written to
+dist/colour-flood-duel-crazygames.zip for convenience: unzip it and upload the files.
 Run from the repo root:  python3 tools/build-crazygames.py
 """
 import pathlib, shutil, zipfile
@@ -17,12 +19,17 @@ shutil.rmtree(OUT, ignore_errors=True)
 OUT.mkdir(parents=True)
 for f in FILES:
     shutil.copy2(ROOT / f, OUT / f)
-shutil.copytree(ROOT / "fonts", OUT / "fonts")
+for f in (ROOT / "fonts").iterdir():
+    shutil.copy2(f, OUT / f.name)   # fonts sit next to index.html
+css = (OUT / "style.css").read_text()
+assert 'url("fonts/' in css
+(OUT / "style.css").write_text(css.replace('url("fonts/', 'url("'))
 
 html = (OUT / "index.html").read_text()
 assert "<!-- PLATFORM_SDK -->" in html and '<html lang="en">' in html
 html = html.replace("<!-- PLATFORM_SDK -->", SDK_TAG)
 html = html.replace('<html lang="en">', '<html lang="en" class="embed">')
+html = html.replace('href="fonts/', 'href="')
 (OUT / "index.html").write_text(html)
 
 ZIP.unlink(missing_ok=True)
