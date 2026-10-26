@@ -97,11 +97,17 @@ const Art = (function () {
         ctx.fill();
     }
 
-    // Small standalone icon for the legend: a coloured tile with the symbol on it
-    function legendIcon(canvas, kind) {
-        const dpr = window.devicePixelRatio || 1, css = canvas.clientWidth || 22;
+    // Small standalone icon for the legend: a coloured tile with the symbol on it.
+    // Drawn off-screen and shown as an <img>, so the game board stays the page's only canvas.
+    function legendIcon(img, kind) {
+        const dpr = Math.max(2, window.devicePixelRatio || 1), css = img.clientWidth || 22;
+        const canvas = document.createElement("canvas");
         canvas.width = canvas.height = Math.round(css * dpr);
         const ctx = canvas.getContext("2d");
+        draw(ctx, kind, css, dpr);
+        img.src = canvas.toDataURL("image/png");
+    }
+    function draw(ctx, kind, css, dpr) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         const s = css, inset = 0, rad = s * 0.24;
         if (kind === "prism") { prism(ctx, 0, 0, s, inset, rad); return; }
