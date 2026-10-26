@@ -19,6 +19,7 @@ const Platform = (function () {
         try {
             await cg.init();
             if (cg.environment === "crazygames" || cg.environment === "local") sdk = cg;
+            console.info(`[Colour Flood Duel] CrazyGames SDK ready, environment: ${cg.environment}`);
         } catch (e) {
             console.warn("CrazyGames SDK init failed, running without it", e);
         }
@@ -58,17 +59,22 @@ const Platform = (function () {
         // Midgame ad at a natural break. Always resolves, ad or no ad,
         // so the game carries on if ads are blocked, unfilled or on cooldown.
         midgameAd() {
-            if (!sdk || adBusy) return Promise.resolve();
+            const tag = "[Colour Flood Duel]";
+            if (!sdk) { console.info(`${tag} no ad: CrazyGames SDK not active`); return Promise.resolve(); }
+            if (adBusy) return Promise.resolve();
             adBusy = true;
+            console.info(`${tag} requesting midgame ad`);
             return new Promise(resolve => {
                 const done = () => { adBusy = false; resolve(); };
                 try {
                     sdk.ad.requestAd("midgame", {
-                        adStarted: () => {},
-                        adFinished: done,
-                        adError: done
+                        adStarted: () => console.info(`${tag} midgame ad started`),
+                        adFinished: () => { console.info(`${tag} midgame ad finished`); done(); },
+                        // codes: adsDisabledBasicLaunch, unfilled, adblock, adCooldown, other
+                        adError: e => { console.info(`${tag} midgame ad not shown:`, (e && (e.code || e.message)) || e); done(); }
                     });
                 } catch (e) {
+                    console.info(`${tag} midgame ad request failed:`, e);
                     done();
                 }
             });
