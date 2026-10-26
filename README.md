@@ -83,7 +83,7 @@ The rules in `game.js` are exported for Node, so you can test them outside the b
 
 ```js
 const G = require("./game.js");
-const st = G.newState(12, 1);
+const st = G.newState("islands", 1);   // arena key, who moves first
 G.playMove(st, G.chooseMove(G.cloneState(st), "hard"));
 ```
 

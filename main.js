@@ -27,6 +27,8 @@
     let recorded = false;
     let modalOpen = false;
     let anim = null, preview = null, hoverColor = null, previews = null;
+    // First-round coach: 0 = before your first move, 1 = after it, 2 = waiting for a ★ move, 3 = ★ tip shown
+    const coach = { step: 0, done: false, humanMoves: 0 };
 
     /* ----- helpers ----- */
     const names = () => ui.mode === "cpu" ? { 1: "You", 2: "Computer" } : { 1: "Player 1", 2: "Player 2" };
@@ -42,6 +44,12 @@
             if (ARENAS[p.arena]) ui.arena = p.arena;
         } catch (e) { /* ignore bad data */ }
         if (DEMO) { ui.mode = "cpu"; ui.level = "hard"; }
+        coach.done = DEMO || Platform.load("cfd-coached") === "1";
+    }
+    function finishCoach() {
+        if (coach.done) return;
+        coach.done = true;
+        Platform.save("cfd-coached", "1");
     }
     const savePrefs = () => Platform.save("cfd-prefs", JSON.stringify(ui));
 
@@ -86,8 +94,37 @@
 
     function humanMove(c) {
         if (!humanCanMove() || !isLegal(S, c)) return;
+        if (!coach.done) {
+            coach.humanMoves++;
+            if (coach.step === 0) coach.step = 1;
+            else if (coach.step === 1) coach.step = 2;
+            else if (coach.step === 3) finishCoach();
+            if (coach.humanMoves >= 10) finishCoach();
+        }
         applyMove(c);
     }
+
+    // Best colour for the player to move (used by the first-round coach)
+    function bestColour() {
+        const pv = getPreviews();
+        let best = null;
+        for (const c of Object.keys(pv.by)) if (best === null || pv.by[c].gain > pv.by[best].gain) best = c;
+        return best === null ? null : Number(best);
+    }
+
+    // The tip to show right now, or "" when the coach has nothing to say
+    function coachTip() {
+        if (coach.done || !S || S.over || isCpuTurn()) return "";
+        const need = Math.floor(S.playable / 2) + 1;
+        if (coach.step === 0) return "Pick a colour. Your corner floods into matching tiles next to it.";
+        if (coach.step === 1) return `Own more than half the tiles to win. That's ${need} here.`;
+        const pv = getPreviews();
+        const star = Object.values(pv.by).some(p => p.events.some(e => e.type === "burst" || e.type === "raid"));
+        if (coach.step === 2 && star) coach.step = 3;
+        if (coach.step === 3) return "★ means that colour sets off a power tile. Grab it!";
+        return "";
+    }
+    const coachPreview = () => coachTip() && coach.step === 0 ? bestColour() : null;
 
     function applyMove(c) {
         const res = playMove(S, c);
@@ -135,6 +172,9 @@
         render();
         maybeCpuMove();
     }
+    $("note").addEventListener("click", e => {
+        if (e.target.closest(".tip-x")) { finishCoach(); preview = null; render(); }
+    });
     $("rulesBtn").addEventListener("click", openRules);
     $("rulesClose").addEventListener("click", closeRules);
     $("rulesModal").addEventListener("click", e => { if (e.target === $("rulesModal")) closeRules(); });
@@ -281,6 +321,7 @@
     const paintLegend = () => document.querySelectorAll(".ico").forEach(c => Art.legendIcon(c, c.dataset.kind));
 
     function setPreview(c) {
+        if (c === null && humanCanMove() && coachPreview() !== null) c = coachPreview();
         if (c === null || !humanCanMove() || !isLegal(S, c)) { preview = null; hoverColor = null; }
         else { hoverColor = c; preview = new Set(getPreviews().by[c].cells); }
         document.querySelectorAll(".sw").forEach(b => b.classList.toggle("hot", Number(b.dataset.c) === hoverColor));
@@ -346,13 +387,19 @@
                 ? (S.starter === 1 ? "You move first this round." : "The computer moves first this round.")
                 : `${nm[S.starter]} moves first this round.`;
         }
-        $("note").hidden = !note;
-        $("note").textContent = note;
+        const tip = coachTip();
+        const noteEl = $("note");
+        noteEl.classList.toggle("tip", !!tip);
+        if (tip) noteEl.innerHTML = `<span>${tip}</span><button type="button" class="tip-x" aria-label="Hide tips">×</button>`;
+        else noteEl.textContent = note;
+        noteEl.hidden = !(tip || note);
 
         // colour buttons
         const pv = !S.over && !cpu ? getPreviews() : null;
+        const pulse = tip && coach.step === 0 ? bestColour() : null;
         COLORS.forEach((col, i) => {
             const b = $("sw" + i), gainEl = b.querySelector(".gain");
+            b.classList.toggle("pulse", i === pulse);
             b.disabled = cpu || !isLegal(S, i);
             b.classList.toggle("wait", cpu);
             if (S.over || cpu) { gainEl.textContent = "–"; b.setAttribute("aria-label", col.name); }
@@ -383,6 +430,9 @@
             ov.hidden = false;
         } else ov.hidden = true;
 
+        // first move: show what the best colour would grab until the player hovers something else
+        if (hoverColor === null && pulse !== null) preview = new Set(pv.by[pulse].cells);
+        else if (hoverColor === null) preview = null;
         if (!anim) draw();
     }
 
